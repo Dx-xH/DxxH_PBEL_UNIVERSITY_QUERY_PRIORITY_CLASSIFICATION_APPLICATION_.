@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>QueryPriority — University AI Triage</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0f;
+      --surface: #111118;
+      --border: #1e1e2e;
+      --accent: #6be5a0;
+      --accent2: #5b8cff;
+      --warn: #ffb347;
+      --danger: #ff5f7e;
+      --text: #e8e8f0;
+      --muted: #5a5a72;
+      --font-head: 'Syne', sans-serif;
+      --font-mono: 'DM Mono', monospace;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-mono);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ─── NOISE OVERLAY ─── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.6;
+    }
+
+    /* ─── GLOWING ORBS ─── */
+    .orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(80px);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .orb-1 {
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(107,229,160,0.08) 0%, transparent 70%);
+      top: -150px; left: -100px;
+      animation: drift1 18s ease-in-out infinite;
+    }
+    .orb-2 {
+      width: 400px; height: 400px;
+      background: radial-gradient(circle, rgba(91,140,255,0.07) 0%, transparent 70%);
+      bottom: 0; right: -100px;
+      animation: drift2 22s ease-in-out infinite;
+    }
+    @keyframes drift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(60px, 80px); } }
+    @keyframes drift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-50px,-60px); } }
+
+    /* ─── LAYOUT ─── */
+    .wrapper {
+      position: relative;
+      z-index: 1;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 60px 24px 100px;
+    }
+
+    /* ─── HEADER ─── */
+    header {
+      margin-bottom: 64px;
+      animation: fadeUp 0.8s ease both;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(107,229,160,0.07);
+      border: 1px solid rgba(107,229,160,0.18);
+      color: var(--accent);
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 5px 12px;
+      border-radius: 100px;
+      margin-bottom: 20px;
+    }
+    .badge-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+      animation: pulse 2s ease infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity: 0.3; } }
+
+    h1 {
+      font-family: var(--font-head);
+      font-size: clamp(36px, 6vw, 56px);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      color: #fff;
+    }
+    h1 span {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .subtitle {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 440px;
+    }
+
+    /* ─── CARD ─── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 36px;
+      position: relative;
+      overflow: hidden;
+      animation: fadeUp 0.8s ease 0.15s both;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(107,229,160,0.3), transparent);
+    }
+
+    /* ─── FORM ─── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .form-group { display: flex; flex-direction: column; gap: 8px; }
+    .form-group.full { grid-column: 1 / -1; }
+
+    label {
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    input, select, textarea {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 14px;
+      padding: 12px 16px;
+      outline: none;
+      transition: border-color 0.25s, box-shadow 0.25s, background 0.25s;
+      width: 100%;
+      -webkit-appearance: none;
+    }
+    textarea { resize: vertical; min-height: 100px; }
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235a5a72' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      padding-right: 36px;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: rgba(107,229,160,0.4);
+      box-shadow: 0 0 0 3px rgba(107,229,160,0.06);
+      background: rgba(107,229,160,0.03);
+    }
+    input::placeholder, textarea::placeholder { color: var(--muted); }
+
+    /* Slider */
+    .slider-wrap { display: flex; flex-direction: column; gap: 8px; }
+    .slider-top { display: flex; justify-content: space-between; align-items: center; }
+    .slider-val {
+      font-family: var(--font-head);
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    input[type=range] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 4px;
+      background: var(--border);
+      border-radius: 100px;
+      padding: 0;
+      border: none;
+      box-shadow: none;
+      cursor: pointer;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 12px rgba(107,229,160,0.5);
+      cursor: pointer;
+      transition: transform 0.15s;
+    }
+    input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+    input[type=range]:focus { border: none; box-shadow: none; }
+    .slider-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+    }
+
+    /* ─── SUBMIT BUTTON ─── */
+    .btn-submit {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      margin-top: 28px;
+      padding: 15px;
+      border: none;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent) 0%, #4cd990 100%);
+      color: #0a1a10;
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+      box-shadow: 0 0 24px rgba(107,229,160,0.2);
+    }
+    .btn-submit:hover { opacity: 0.92; transform: translateY(-1px); box-shadow: 0 4px 30px rgba(107,229,160,0.35); }
+    .btn-submit:active { transform: translateY(0); }
+    .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(0,0,0,0.3);
+      border-top-color: #0a1a10;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── API URL BAR ─── */
+    .api-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    .api-bar label { white-space: nowrap; }
+    .api-bar input { flex: 1; font-size: 12px; }
+    .api-bar .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+    .api-bar .status-dot.live { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+
+    /* ─── RESULT ─── */
+    .result-section {
+      margin-top: 28px;
+      display: none;
+      animation: fadeUp 0.5s ease both;
+    }
+    .result-section.show { display: block; }
+
+    .result-card {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .result-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      background: rgba(255,255,255,0.02);
+      border-bottom: 1px solid var(--border);
+    }
+    .result-header span { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+
+    .priority-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 24px 24px 20px;
+    }
+    .priority-label {
+      font-family: var(--font-head);
+      font-size: 48px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1;
+    }
+    .priority-label.high { color: var(--danger); text-shadow: 0 0 40px rgba(255,95,126,0.3); }
+    .priority-label.medium { color: var(--warn); text-shadow: 0 0 40px rgba(255,179,71,0.3); }
+    .priority-label.low { color: var(--accent); text-shadow: 0 0 40px rgba(107,229,160,0.3); }
+
+    .confidence-ring {
+      position: relative;
+      width: 80px; height: 80px;
+      flex-shrink: 0;
+    }
+    .confidence-ring svg { transform: rotate(-90deg); }
+    .confidence-ring .ring-track { fill: none; stroke: var(--border); stroke-width: 5; }
+    .confidence-ring .ring-fill {
+      fill: none;
+      stroke-width: 5;
+      stroke-linecap: round;
+      stroke-dasharray: 220;
+      stroke-dashoffset: 220;
+      transition: stroke-dashoffset 1s ease, stroke 0.5s;
+    }
+    .confidence-ring .ring-label {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 14px;
+      line-height: 1;
+    }
+    .confidence-ring .ring-sub { font-size: 8px; color: var(--muted); letter-spacing: 0.1em; margin-top: 2px; }
+
+    .result-meta {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0;
+      border-top: 1px solid var(--border);
+    }
+    .meta-item {
+      padding: 14px 20px;
+      border-right: 1px solid var(--border);
+    }
+    .meta-item:last-child { border-right: none; }
+    .meta-item .meta-label { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+    .meta-item .meta-val { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Raw JSON */
+    .raw-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      padding: 0;
+      transition: color 0.2s;
+    }
+    .raw-toggle:hover { color: var(--text); }
+    .raw-json {
+      display: none;
+      background: rgba(0,0,0,0.3);
+      border-top: 1px solid var(--border);
+      padding: 16px 20px;
+      font-size: 12px;
+      color: var(--accent2);
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .raw-json.show { display: block; }
+
+    /* Error */
+    .error-box {
+      margin-top: 20px;
+      padding: 14px 18px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,95,126,0.25);
+      background: rgba(255,95,126,0.06);
+      color: var(--danger);
+      font-size: 13px;
+      display: none;
+    }
+    .error-box.show { display: block; }
+
+    /* ─── HISTORY ─── */
+    .history-section {
+      margin-top: 48px;
+      animation: fadeUp 0.8s ease 0.3s both;
+    }
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .section-title {
+      font-family: var(--font-head);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .clear-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      cursor: pointer;
+      letter-spacing: 0.08em;
+      transition: color 0.2s;
+    }
+    .clear-btn:hover { color: var(--danger); }
+
+    .history-list { display: flex; flex-direction: column; gap: 10px; }
+    .history-item {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 16px;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      animation: fadeUp 0.4s ease both;
+    }
+    .history-item:hover { border-color: rgba(107,229,160,0.2); background: rgba(107,229,160,0.03); }
+    .history-badge {
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 12px;
+      padding: 3px 10px;
+      border-radius: 100px;
+      white-space: nowrap;
+    }
+    .history-badge.high { background: rgba(255,95,126,0.1); color: var(--danger); }
+    .history-badge.medium { background: rgba(255,179,71,0.1); color: var(--warn); }
+    .history-badge.low { background: rgba(107,229,160,0.1); color: var(--accent); }
+    .history-text { font-size: 13px; color: var(--text); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .history-dept { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+    .empty-history {
+      text-align: center;
+      padding: 30px;
+      color: var(--muted);
+      font-size: 13px;
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+    }
+
+    /* ─── ANIMATIONS ─── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(18px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ─── RESPONSIVE ─── */
+    @media (max-width: 600px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .form-group.full { grid-column: 1; }
+      .result-meta { grid-template-columns: 1fr; }
+      .meta-item { border-right: none; border-bottom: 1px solid var(--border); }
+      .meta-item:last-child { border-bottom: none; }
+      .priority-label { font-size: 36px; }
+      .card { padding: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+
+  <div class="wrapper">
+
+    <!-- HEADER -->
+    <header>
+      <div class="badge"><span class="badge-dot"></span>AI-Powered Triage</div>
+      <h1>University Query<br><span>Priority Classifier</span></h1>
+      <p class="subtitle">Instantly classify student queries by urgency using machine learning. Helps support teams respond to what matters most, first.</p>
+    </header>
+
+    <!-- MAIN CARD -->
+    <div class="card">
+
+      <!-- API URL BAR -->
+      <div class="api-bar">
+        <label>API</label>
+        <input type="text" id="apiUrl" value="http://localhost:8000/predict" placeholder="http://localhost:8000/predict" />
+        <div class="status-dot" id="statusDot" title="Connection status"></div>
+      </div>
+
+      <!-- FORM -->
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>Student Query</label>
+          <textarea id="queryInput" placeholder="e.g. I haven't received my scholarship letter and the deadline is approaching..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Department</label>
+          <select id="deptInput">
+            <option value="">Select department…</option>
+            <option>Admissions</option>
+            <option>Finance</option>
+            <option>Registrar</option>
+            <option>Academic Affairs</option>
+            <option>Student Services</option>
+            <option>IT Support</option>
+            <option>Library</option>
+            <option>Housing</option>
+            <option>Health Center</option>
+            <option>International Office</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <div class="slider-wrap">
+            <div class="slider-top">
+              <label>Days to Deadline</label>
+              <span class="slider-val" id="sliderVal">7</span>
+            </div>
+            <input type="range" id="deadlineSlider" min="0" max="60" value="7" step="1" />
+            <div class="slider-labels"><span>Urgent (0)</span><span>60 days</span></div>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn-submit" id="submitBtn" onclick="submitQuery()">
+        <span class="spinner" id="spinner"></span>
+        <span id="btnText">Classify Query →</span>
+      </button>
+
+      <!-- ERROR -->
+      <div class="error-box" id="errorBox"></div>
+
+      <!-- RESULT -->
+      <div class="result-section" id="resultSection">
+        <div class="result-card">
+          <div class="result-header">
+            <span>Classification Result</span>
+            <button class="raw-toggle" onclick="toggleRaw()">{ } Raw JSON</button>
+          </div>
+          <div class="priority-banner">
+            <div>
+              <div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Priority Level</div>
+              <div class="priority-label" id="priorityLabel">—</div>
+            </div>
+            <div class="confidence-ring">
+              <svg viewBox="0 0 80 80" width="80" height="80">
+                <circle class="ring-track" cx="40" cy="40" r="35"/>
+                <circle class="ring-fill" id="ringFill" cx="40" cy="40" r="35"/>
+              </svg>
+              <div class="ring-label">
+                <span id="confPct">—</span>
+                <span class="ring-sub">CONF.</span>
+              </div>
+            </div>
+          </div>
+          <div class="result-meta">
+            <div class="meta-item">
+              <div class="meta-label">Department</div>
+              <div class="meta-val" id="metaDept">—</div>
+            </div>
+            <div class="meta-item">
+              <div class="meta-label">Days to Deadline</div>
+              <div class="meta-val" id="metaDays">—</div>
+            </div>
+            <div class="meta-item">
+              <div class="meta-label">Model</div>
+              <div class="meta-val">pipeline.pkl</div>
+            </div>
+          </div>
+          <pre class="raw-json" id="rawJson"></pre>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- HISTORY -->
+    <div class="history-section">
+      <div class="section-head">
+        <div class="section-title">Query History</div>
+        <button class="clear-btn" onclick="clearHistory()">Clear All</button>
+      </div>
+      <div class="history-list" id="historyList">
+        <div class="empty-history" id="emptyHistory">No queries yet. Run your first classification above.</div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // ─── SLIDER ───
+    const slider = document.getElementById('deadlineSlider');
+    const sliderVal = document.getElementById('sliderVal');
+    slider.addEventListener('input', () => { sliderVal.textContent = slider.value; });
+
+    // ─── HISTORY ───
+    let history = JSON.parse(localStorage.getItem('qp_history') || '[]');
+    renderHistory();
+
+    function saveHistory() {
+      localStorage.setItem('qp_history', JSON.stringify(history));
+    }
+
+    function clearHistory() {
+      history = [];
+      saveHistory();
+      renderHistory();
+    }
+
+    function renderHistory() {
+      const list = document.getElementById('historyList');
+      const empty = document.getElementById('emptyHistory');
+      if (history.length === 0) {
+        list.innerHTML = '';
+        list.appendChild(empty);
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+      list.innerHTML = '';
+      [...history].reverse().forEach((item, i) => {
+        const div = document.createElement('div');
+        div.className = 'history-item';
+        div.style.animationDelay = `${i * 0.05}s`;
+        const pLower = (item.priority || '').toLowerCase();
+        div.innerHTML = `
+          <span class="history-badge ${pLower}">${item.priority}</span>
+          <span class="history-text">${item.Student_Query}</span>
+          <span class="history-dept">${item.Department}</span>
+        `;
+        div.onclick = () => fillFromHistory(item);
+        list.appendChild(div);
+      });
+    }
+
+    function fillFromHistory(item) {
+      document.getElementById('queryInput').value = item.Student_Query;
+      document.getElementById('deptInput').value = item.Department;
+      document.getElementById('deadlineSlider').value = item.Days_To_Deadline;
+      document.getElementById('sliderVal').textContent = item.Days_To_Deadline;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ─── TOGGLE RAW JSON ───
+    let rawVisible = false;
+    function toggleRaw() {
+      rawVisible = !rawVisible;
+      document.getElementById('rawJson').classList.toggle('show', rawVisible);
+    }
+
+    // ─── PRIORITY COLOR ───
+    function priorityClass(p) {
+      const l = (p || '').toLowerCase();
+      if (l.includes('high')) return 'high';
+      if (l.includes('med')) return 'medium';
+      return 'low';
+    }
+
+    // ─── CONFIDENCE RING ───
+    function animateRing(conf, cls) {
+      const ring = document.getElementById('ringFill');
+      const pct = document.getElementById('confPct');
+      const circumference = 220;
+      const colors = { high: '#ff5f7e', medium: '#ffb347', low: '#6be5a0' };
+      ring.style.stroke = colors[cls] || '#6be5a0';
+      if (conf === null || conf === undefined) {
+        ring.style.strokeDashoffset = circumference;
+        pct.textContent = 'N/A';
+        return;
+      }
+      const offset = circumference - (conf * circumference);
+      ring.style.strokeDashoffset = offset;
+      pct.textContent = Math.round(conf * 100) + '%';
+    }
+
+    // ─── SUBMIT ───
+    async function submitQuery() {
+      const query = document.getElementById('queryInput').value.trim();
+      const dept = document.getElementById('deptInput').value;
+      const days = parseInt(slider.value);
+      const apiUrl = document.getElementById('apiUrl').value.trim();
+
+      const errorBox = document.getElementById('errorBox');
+      errorBox.classList.remove('show');
+
+      if (!query) { showError('Please enter a student query.'); return; }
+      if (!dept) { showError('Please select a department.'); return; }
+
+      setLoading(true);
+
+      try {
+        const res = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ Student_Query: query, Department: dept, Days_To_Deadline: days })
+        });
+
+        setDot(true);
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || `HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        showResult(data);
+
+        history.push(data);
+        if (history.length > 20) history.shift();
+        saveHistory();
+        renderHistory();
+
+      } catch (err) {
+        setDot(false);
+        showError(err.message || 'Failed to connect. Is the API running?');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    function showResult(data) {
+      const cls = priorityClass(data.priority);
+      const label = document.getElementById('priorityLabel');
+      label.textContent = (data.priority || 'Unknown').toUpperCase();
+      label.className = `priority-label ${cls}`;
+      animateRing(data.confidence, cls);
+      document.getElementById('metaDept').textContent = data.Department;
+      document.getElementById('metaDays').textContent = data.Days_To_Deadline + ' days';
+      document.getElementById('rawJson').textContent = JSON.stringify(data, null, 2);
+      rawVisible = false;
+      document.getElementById('rawJson').classList.remove('show');
+      const section = document.getElementById('resultSection');
+      section.classList.remove('show');
+      void section.offsetWidth; // reflow for re-animation
+      section.classList.add('show');
+    }
+
+    function showError(msg) {
+      const box = document.getElementById('errorBox');
+      box.textContent = '⚠ ' + msg;
+      box.classList.add('show');
+    }
+
+    function setLoading(on) {
+      const btn = document.getElementById('submitBtn');
+      const spinner = document.getElementById('spinner');
+      const txt = document.getElementById('btnText');
+      btn.disabled = on;
+      spinner.style.display = on ? 'block' : 'none';
+      txt.textContent = on ? 'Classifying…' : 'Classify Query →';
+    }
+
+    function setDot(live) {
+      document.getElementById('statusDot').classList.toggle('live', live);
+    }
+
+    // Enter to submit
+    document.getElementById('queryInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter' && e.ctrlKey) submitQuery();
+    });
+  </script>
+</body>
+</html>
