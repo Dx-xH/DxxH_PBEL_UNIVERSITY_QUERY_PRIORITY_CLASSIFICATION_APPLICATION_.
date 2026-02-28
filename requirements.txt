@@ -3,6 +3,5 @@ uvicorn
 scikit-learn==1.6.1
 pandas
 joblib
-tensorflow
-keras
 numpy
+
